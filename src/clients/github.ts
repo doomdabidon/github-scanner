@@ -1,8 +1,8 @@
-import axios from 'axios';
+import axios, { AxiosResponse } from 'axios';
 
 import { GITHUB_API_BASE_URL } from '../constants';
 
-export const get = async ({ token, endpoint }: { token: string; endpoint: string }): Promise<any> => {
+export const get = async ({ token, endpoint }: { token: string; endpoint: string }): Promise<AxiosResponse> => {
     try {
       const response = await axios.get(`${GITHUB_API_BASE_URL}/${endpoint}`, {
         headers: {
@@ -11,7 +11,7 @@ export const get = async ({ token, endpoint }: { token: string; endpoint: string
       });
   
       if (response.status !== 200) {
-        throw new Error(`${endpoint} request has failed`)
+        throw new Error(`${endpoint} request has failed with code: ${response.status}`)
       }
   
       return response;

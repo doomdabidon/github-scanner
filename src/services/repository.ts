@@ -1,6 +1,11 @@
 import * as githubApi from '../api/github';
 
-import { errorResponceWrapper, Simaphore, trasformDetailsObject, trasformListObjects } from '../utils';
+import {
+  errorResponceWrapper,
+  Semaphore,
+  transformRepositoryDetails,
+  transformRepositoryListItem
+} from '../utils';
 import {
   Responce,
   RepositoryFilesMetaInput,
@@ -8,29 +13,33 @@ import {
   RepositoryDetailsResponce,
   RepositoryListResponce,
   GithubMetaFileInfo,
-  GithubRepoMetaInfo,
   GithubItemTypes
 } from '../types';
 
 import { FILE_EXTENTION_TO_FOUND } from '../constants';
 
-const simaphore = new Simaphore();
+const semaphore = new Semaphore();
 
 export const getRepositoryDetails = async (input: RepositoryDetailWithTokenInput): Promise<Responce<RepositoryDetailsResponce>> => {
   let reliseLock;
   try {
-     const repositorieDetail = await githubApi.getRepositoryDetails(input);
+    const repositorieDetail = await githubApi.getRepositoryDetails(input);
 
-     reliseLock = await simaphore.aquireLock();
-     const { numberOfFiles, ymlFileContent } = await getRepositoryMetaInfo(input);
-     reliseLock();
-     const webHooks = await githubApi.getActiveWebhooks(input);
-     const data = trasformDetailsObject({ details: repositorieDetail, file: ymlFileContent, numberOfFiles, webHooks });
+    reliseLock = await semaphore.aquireLock();
+    const repositoryFiles = await createRepositoryFloatFilesArray(input);
+    reliseLock();
 
-   return {
-     success: true,
-     data,
-   }
+    const ymlFileContent = await getFirstEligibleFileContent(
+      { items: repositoryFiles, token: input.token, fileExtension: FILE_EXTENTION_TO_FOUND }
+    );
+    const webHooks = await githubApi.getActiveWebhooks(input);
+    const numberOfFiles = repositoryFiles.length;
+    const data = transformRepositoryDetails({ details: repositorieDetail, file: ymlFileContent, numberOfFiles, webHooks });
+
+    return {
+      success: true,
+      data,
+    }
   } catch (error) {
    reliseLock && reliseLock();
    return errorResponceWrapper(error as Error);
@@ -40,7 +49,7 @@ export const getRepositoryDetails = async (input: RepositoryDetailWithTokenInput
 export const getRepositoryList = async (token: string): Promise<Responce<RepositoryListResponce[]>> => {
  try {
    const repositoriesList = await githubApi.getRepositories({ token });
-   const projectedData = repositoriesList.map((repo) => trasformListObjects(repo))
+   const projectedData = repositoriesList.map((repo) => transformRepositoryListItem(repo))
 
    return {
      success: true,
@@ -51,40 +60,37 @@ export const getRepositoryList = async (token: string): Promise<Responce<Reposit
  }
 }
 
-const getRepositoryMetaInfo = async (requestParams: RepositoryFilesMetaInput, isYamlFileFound = false): Promise<GithubRepoMetaInfo> => {
-  let numberOfFiles = 0;
-  let ymlFileContent = null;
-
+const createRepositoryFloatFilesArray = async (requestParams: RepositoryFilesMetaInput): Promise<GithubMetaFileInfo[]> => {
+  const repositoryArray: GithubMetaFileInfo[] = [];
   const repositoryFilesMeta = await githubApi.getRepositoryFilesMeta(requestParams);
+
   if (repositoryFilesMeta.length === 0) {
-    return { numberOfFiles, ymlFileContent };
+    return [];
   }
 
   for (const item of repositoryFilesMeta) {
     if (item.type === GithubItemTypes.file) {
-      numberOfFiles += 1;
-      if (isYamlFileFound || !isFileHasTargetExtansion(item, FILE_EXTENTION_TO_FOUND)) {
-        continue;
-      }
-
-      ymlFileContent = await githubApi.getRepositoryFile({ token: requestParams.token, link: item.download_url! });
-      isYamlFileFound = true;
+      repositoryArray.push(item);
     } else if (item.type === GithubItemTypes.dir) {
-      const internalScanResponce = await getRepositoryMetaInfo({ ...requestParams, path: item.path }, isYamlFileFound);
-
-      numberOfFiles += internalScanResponce.numberOfFiles;
-      if (isYamlFileFound || !internalScanResponce.ymlFileContent) {
-        continue;
-      }
-
-      isYamlFileFound = true;
-      ymlFileContent = internalScanResponce.ymlFileContent;
+      const internalScanResponce = await createRepositoryFloatFilesArray({ ...requestParams, path: item.path });
+      repositoryArray.push(...internalScanResponce);
     }
   }
 
-  return { numberOfFiles, ymlFileContent };
+  return repositoryArray;
 }
 
-const isFileHasTargetExtansion = (item: GithubMetaFileInfo, fileExtension: string) => {
-  return item.name.endsWith(fileExtension) && item.download_url;
+const getFirstEligibleFileContent = async ({items, token, fileExtension}: { items: GithubMetaFileInfo[]; fileExtension: string; token: string }): Promise<string | null> => {
+  const targetFile = items.find((item) => isFileHasEligibleExtansion(item, fileExtension));
+  if (!targetFile) {
+    return null;
+  }
+
+  const fileContent = await githubApi.getRepositoryFile({ token, link: targetFile.download_url! });
+
+  return JSON.stringify(fileContent);
+};
+
+const isFileHasEligibleExtansion = (item: GithubMetaFileInfo, fileExtension: string) => {
+  return item.name.endsWith(fileExtension) && item.type === GithubItemTypes.file && item.download_url;
 }

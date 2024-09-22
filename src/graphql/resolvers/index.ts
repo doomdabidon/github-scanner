@@ -1,5 +1,5 @@
-import { getRepositoryDetails, getRepositoryList } from '../services/repository';
-import { RepositoryDetailInput } from '../types'
+import { getRepositoryDetails, getRepositoryList } from '../../services/repository';
+import { RepositoryDetailInput } from '../../types'
 
 export const resolvers = {
   Query: {

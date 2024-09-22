@@ -4,7 +4,7 @@ import {
     HooksResponce
 } from '../types';
 
-export const trasformDetailsObject = (
+export const transformRepositoryDetails = (
     { details, webHooks, file, numberOfFiles }:
     { details: Record<string, any>; webHooks: HooksResponce[]; file: string | null; numberOfFiles: number }
 ): RepositoryDetailsResponce => {
@@ -21,7 +21,7 @@ export const trasformDetailsObject = (
     };
 }
 
-export const trasformListObjects = ({ details }: { details: Record<string, any>; }): RepositoryListResponce => {
+export const transformRepositoryListItem = (details: Record<string, any>): RepositoryListResponce => {
     return {
       name: details.name,
       size: details.size,

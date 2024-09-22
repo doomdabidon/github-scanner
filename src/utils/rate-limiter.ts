@@ -2,7 +2,7 @@ import crypto from 'crypto';
 
 import { SYMAPHORE_CAPACITY_LIMIT } from '../constants'
 
-export class Simaphore {
+export class Semaphore {
   private capacity: number;
   private currentNumberOfLocks = 0;
   private locksQueue: Array<() => any> = [];
