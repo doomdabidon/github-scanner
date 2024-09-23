@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GitHub Repositories</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+    }
+
+    .repo-list {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+    }
+
+    .repo {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      padding: 10px;
+      border: 1px solid #ccc;
+    }
+
+    .repo button {
+      margin-left: 10px;
+    }
+
+    .repo-details {
+      margin-left: 20px;
+      flex-grow: 1;
+      background-color: #f9f9f9;
+      padding: 10px;
+      border-left: 1px solid #ccc;
+    }
+
+    .details {
+      margin-top: 10px;
+      display: inline-block;
+    }
+
+    .details pre {
+      background-color: #f0f0f0;
+      padding: 10px;
+    }
+
+    .details-timer {
+      margin-top: 5px;
+      color: #555;
+      font-size: 0.9em;
+    }
+  </style>
+</head>
+<body>
+  <h1>GitHub Repositories</h1>
+  
+  <label for="auth-token">Github authorization token:</label>
+  <input type="text" id="auth-token" placeholder="Enter your token">
+  <button id="load-repos">Load Repositories</button>
+
+  <div id="repos-list" class="repo-list"></div>
+
+  <script>
+    const gqlEndpoint = 'http://localhost:4000/';
+
+    document.getElementById('load-repos').addEventListener('click', loadRepositories);
+
+    async function loadRepositories() {
+      const token = document.getElementById('auth-token').value;
+      if (!token) {
+        alert('Please provide an authorization token');
+        return;
+      }
+
+      const query = `
+        query {
+          RepositoryList {
+            success
+            reason
+            data {
+              name
+              size
+              owner
+            }
+          }
+        }
+      `;
+
+      const headers = {
+        "Content-Type": "application/json",
+        "authorization": `${token}`
+      };
+
+      try {
+        const response = await fetch(gqlEndpoint, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ query })
+        });
+
+        const result = await response.json();
+        const repositories = result.data.RepositoryList.data;
+
+        if (result.data.RepositoryList.success) {
+          displayRepositories(repositories);
+        } else {
+          alert(result.data.RepositoryList.reason);
+        }
+      } catch (error) {
+        console.error('Error fetching repositories:', error);
+      }
+    }
+
+    function displayRepositories(repositories) {
+      const reposList = document.getElementById('repos-list');
+      reposList.innerHTML = '';
+
+      repositories.forEach(repo => {
+        const repoDiv = document.createElement('div');
+        repoDiv.className = 'repo';
+        repoDiv.innerHTML = `
+          <div style="flex-direction: column; display: flex; line-hight: 48px">
+            <strong>Name:</strong> ${repo.name} 
+            <strong>Size:</strong> ${repo.size} KB 
+            <strong>Owner:</strong> ${repo.owner}
+          </div>
+          <button onclick="loadRepositoryDetails('${repo.name}', '${repo.owner}')">Details</button>
+          <div id="details-${repo.name}" class="repo-details"></div>
+        `;
+        reposList.appendChild(repoDiv);
+      });
+    }
+
+    async function loadRepositoryDetails(name, owner) {
+      clearRepositoryDetails(name);
+
+      const token = document.getElementById('auth-token').value;
+      const query = `
+        query($input: RepositoryDetailsInput!) {
+          RepositoryDetails(input: $input) {
+            success
+            reason
+            data {
+              name
+              size
+              owner
+              private
+              numberOfFiles
+              ymlFileContent
+              activeWebhooks
+            }
+          }
+        }
+      `;
+
+      const variables = {
+        input: {
+          name,
+          owner
+        }
+      };
+
+      const headers = {
+        "Content-Type": "application/json",
+        "authorization": `${token}`
+      };
+
+      const startTime = performance.now();
+
+      try {
+        const response = await fetch(gqlEndpoint, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ query, variables })
+        });
+
+        const result = await response.json();
+        const details = result.data.RepositoryDetails.data;
+        const success = result.data.RepositoryDetails.success;
+
+        const endTime = performance.now();
+        const requestTime = ((endTime - startTime) / 1000).toFixed(2);
+
+        if (success) {
+          displayRepositoryDetails(name, details, requestTime);
+        } else {
+          alert(result.data.RepositoryDetails.reason);
+        }
+      } catch (error) {
+        console.error('Error fetching repository details:', error);
+      }
+    }
+
+    function displayRepositoryDetails(repoName, details, requestTime) {
+      const detailsDiv = document.getElementById(`details-${repoName}`);
+      detailsDiv.innerHTML = `
+        <div class="details">
+          <strong>Request Time:</strong> ${requestTime} seconds
+          <div class="details-timer"><strong>Details:</strong></div>
+          <pre>${JSON.stringify(details, null, 2)}</pre>
+        </div>
+      `;
+    }
+
+    function clearRepositoryDetails(repoName) {
+      const detailsDiv = document.getElementById(`details-${repoName}`);
+      detailsDiv.innerHTML = ``;
+    }
+  </script>
+</body>
+</html>
